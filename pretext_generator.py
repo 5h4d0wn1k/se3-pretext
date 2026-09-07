@@ -1,15 +1,47 @@
 #!/usr/bin/env python3
 """
-SE3 — Pretext Generator
-Pretext scenario generation, victim profiling, attack path planning, reporting templates
+SE3 — Pretext Generator (lab-sealed)
+Pretext scenario generation, victim profiling, attack path planning, reporting.
+
+ANTI-ABUSE: requires an explicit --lab-root and --target-org OWN. Only synthetic
+personas and .example org names are accepted. All scenarios carry
+"AUTHORIZED INTERNAL DRILL" branding.
 """
 
+import argparse
 import json
 import random
 import os
+import sys
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Dict, List, Optional
 from enum import Enum
+
+WATERMARK = "SIMULATION / AUTHORIZED TRAINING ONLY"
+DRILL_BRAND = "AUTHORIZED INTERNAL DRILL"
+
+
+class GuardError(Exception):
+    pass
+
+
+class LabGuard:
+    def __init__(self, lab_root=None, target_org="OWN"):
+        if not lab_root:
+            raise GuardError("Explicit --lab-root is required.")
+        if target_org != "OWN":
+            raise GuardError("Only --target-org OWN is permitted in lab mode.")
+        self.lab_root = Path(lab_root)
+        self.reports = self.lab_root / "reports"
+        self.reports.mkdir(parents=True, exist_ok=True)
+
+    def refuse_org(self, org):
+        if not str(org).lower().endswith((".example", ".lab")):
+            raise GuardError(f"Refusing org '{org}': only synthetic .example names allowed.")
+
+    def watermark(self, text):
+        return f"[{WATERMARK}]\n{text}"
 
 
 class AttackType(Enum):
@@ -119,6 +151,9 @@ class PretextScenario:
         scenario = random.choice(scenarios).copy()
         scenario["attack_type"] = attack_type.value
         scenario["generated"] = datetime.now().isoformat()
+        scenario["drill_brand"] = DRILL_BRAND
+        scenario["watermark"] = WATERMARK
+        scenario["approach"] = f"[{DRILL_BRAND}] {scenario['approach']}"
         
         if custom_params:
             scenario.update(custom_params)
@@ -378,9 +413,10 @@ Lessons Learned:
 
 
 class PretextGenerator:
-    """Main pretext generation system"""
-    
-    def __init__(self):
+    """Main pretext generation system (lab-sealed)"""
+
+    def __init__(self, lab_root=None, target_org="OWN"):
+        self.guard = LabGuard(lab_root, target_org)
         self.scenario_gen = PretextScenario()
         self.victim_profiler = VictimProfile()
         self.path_planner = AttackPathPlanner()
@@ -389,7 +425,8 @@ class PretextGenerator:
     
     def create_engagement(self, name: str, target_org: str, 
                          objectives: List[str]) -> Dict:
-        """Create a new engagement"""
+        """Create a new engagement (synthetic org only)"""
+        self.guard.refuse_org(target_org)
         engagement = {
             "name": name,
             "target_org": target_org,
@@ -477,16 +514,19 @@ class PretextGenerator:
 
 
 if __name__ == "__main__":
-    print("SE3 — Pretext Generator")
+    ap = argparse.ArgumentParser(description="SE3 Pretext Generator (lab-sealed).")
+    ap.add_argument("--lab-root", required=True)
+    ap.add_argument("--target-org", default="OWN")
+    args = ap.parse_args(sys.argv[1:])
+
+    generator = PretextGenerator(args.lab_root, args.target_org)
+    print(f"SE3 — Pretext Generator [{DRILL_BRAND}]")
     print("=" * 40)
-    
-    generator = PretextGenerator()
-    
-    # Create sample engagement
+
     print("\n[*] Creating sample engagement...")
     engagement = generator.create_engagement(
         name="Test Engagement",
-        target_org="Example Corp",
+        target_org="acme-lab.example",
         objectives=["Test employee awareness", "Identify security gaps"]
     )
     
